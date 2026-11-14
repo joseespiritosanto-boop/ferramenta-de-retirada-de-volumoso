@@ -3,135 +3,236 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Leitor QR - Retirada Volumoso</title>
+  <title>Scanner SPX - Retirada Volumoso</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
-      background: #111;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #121212;
       color: #fff;
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      height: 100dvh;
       justify-content: space-between;
     }
     .topo {
       padding: 16px;
-      text-align: center;
-      background: #1c1e21;
-      border-bottom: 1px solid #333;
+      background: linear-gradient(135deg, #EE4D2D 0%, #D73211 100%);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.4);
     }
-    .topo h2 { font-size: 18px; margin-bottom: 4px; }
-    .topo p { font-size: 13px; color: #aaa; }
+    .topo-info h2 { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .topo-info p { font-size: 12px; opacity: 0.9; margin-top: 2px; }
+    .badge-qtd {
+      background: #fff;
+      color: #EE4D2D;
+      font-weight: 800;
+      font-size: 16px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      display: none;
+    }
     #reader {
       width: 100%;
-      max-width: 450px;
+      max-width: 440px;
       margin: auto;
-      border-radius: 12px;
       overflow: hidden;
     }
+    .lista-massa {
+      max-height: 110px;
+      overflow-y: auto;
+      padding: 8px 16px;
+      display: none;
+      flex-wrap: wrap;
+      gap: 6px;
+      background: #1a1a1a;
+      border-top: 1px solid #2c2c2c;
+    }
+    .chip-br {
+      background: #2b2b2b;
+      border: 1px solid #EE4D2D;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .chip-br span { color: #ff7b5f; cursor: pointer; font-weight: 800; }
     .rodape {
-      padding: 16px;
-      background: #1c1e21;
+      padding: 14px 16px;
+      background: #1c1c1e;
+      border-top: 1px solid #2c2c2c;
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
-    .btn-voltar {
-      width: 100%;
-      padding: 14px;
-      background: #b00020;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      font-size: 16px;
-      font-weight: bold;
-      cursor: pointer;
-    }
     #status {
       text-align: center;
       font-size: 13px;
-      color: #4caf50;
+      font-weight: 600;
+      color: #4ade80;
       min-height: 18px;
     }
+    .acoes { display: flex; gap: 10px; }
+    .btn {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-cancelar { background: #333; color: #fff; }
+    .btn-concluir { background: #EE4D2D; color: #fff; display: none; }
   </style>
 </head>
 <body>
 
   <div class="topo">
-    <h2 id="tituloCampo">📷 Escaneando QR Code</h2>
-    <p>Aponte a câmera traseira para o código</p>
+    <div class="topo-info">
+      <h2 id="tituloCampo">Scanner SPX</h2>
+      <p id="subtituloCampo">Aponte a câmera para o código QR</p>
+    </div>
+    <div id="badgeQtd" class="badge-qtd">0 BRs</div>
   </div>
 
   <div id="reader"></div>
 
+  <div id="listaMassa" class="lista-massa"></div>
+
   <div class="rodape">
     <div id="status">Iniciando câmera...</div>
-    <button class="btn-voltar" onclick="voltarSemLer()">✖ Cancelar e Voltar</button>
+    <div class="acoes">
+      <button class="btn btn-cancelar" onclick="voltarSemLer()">Cancelar</button>
+      <button id="btnConcluir" class="btn btn-concluir" onclick="concluirMassa()">Concluir Leitura (0)</button>
+    </div>
   </div>
 
   <script>
     const params = new URLSearchParams(window.location.search);
     const campo = params.get('campo') || 'pacote';
+    const modo = params.get('modo') || 'unico'; // 'unico' ou 'massa'
     const urlVoltar = params.get('voltar') || '';
 
-    document.getElementById('tituloCampo').innerText =
-      campo === 'motorista' ? '🪪 Escanear ID do Motorista' : '📦 Escanear QR do Pacote';
-
+    const isMassa = (modo === 'massa');
+    let listaCodigos = [];
+    let ultimoCodigo = '';
+    let ultimoTempo = 0;
     let html5QrCode;
-    let jaLeu = false;
+    let finalizando = false;
 
-    function devolverCodigo(codigo) {
-      if (jaLeu) return;
-      jaLeu = true;
+    if (isMassa) {
+      document.getElementById('tituloCampo').innerText = 'Leitura em Massa (BRs)';
+      document.getElementById('subtituloCampo').innerText = 'Bipe vários pacotes seguidos para o mesmo ID';
+      document.getElementById('badgeQtd').style.display = 'block';
+      document.getElementById('listaMassa').style.display = 'flex';
+      document.getElementById('btnConcluir').style.display = 'block';
+    } else {
+      document.getElementById('tituloCampo').innerText =
+        campo === 'motorista' ? 'ID do Motorista' : 'QR Code do Pacote';
+    }
 
-      if (navigator.vibrate) navigator.vibrate(150);
-      document.getElementById('status').innerText = '✅ Lido: ' + codigo + ' — voltando...';
+    function beep() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.frequency.value = 920; g.gain.value = 0.15;
+        o.start(); setTimeout(() => { o.stop(); ctx.close(); }, 130);
+      } catch (e) {}
+    }
 
-      if (html5QrCode) {
-        html5QrCode.stop().catch(() => {});
+    function atualizarListaVisual() {
+      const qtd = listaCodigos.length;
+      document.getElementById('badgeQtd').innerText = qtd + (qtd === 1 ? ' BR' : ' BRs');
+      document.getElementById('btnConcluir').innerText = `Concluir Leitura (${qtd})`;
+      const box = document.getElementById('listaMassa');
+      box.innerHTML = '';
+      listaCodigos.slice().reverse().forEach((cod) => {
+        const div = document.createElement('div');
+        div.className = 'chip-br';
+        div.innerHTML = `${cod} <span onclick="removerCodigo('${cod}')">✕</span>`;
+        box.appendChild(div);
+      });
+    }
+
+    function removerCodigo(cod) {
+      listaCodigos = listaCodigos.filter(c => c !== cod);
+      atualizarListaVisual();
+    }
+
+    function processarLeitura(codigo) {
+      if (finalizando) return;
+      const agora = Date.now();
+      if (codigo === ultimoCodigo && (agora - ultimoTempo) < 1800) return;
+      ultimoCodigo = codigo;
+      ultimoTempo = agora;
+
+      if (!isMassa) {
+        finalizando = true;
+        if (navigator.vibrate) navigator.vibrate(150);
+        beep();
+        document.getElementById('status').innerText = 'Lido: ' + codigo + ' — retornando...';
+        redirecionarDeVolta(codigo, 'unico');
+        return;
       }
 
+      if (listaCodigos.includes(codigo)) {
+        document.getElementById('status').style.color = '#facc15';
+        document.getElementById('status').innerText = 'Pacote já bipado: ' + codigo;
+        return;
+      }
+
+      listaCodigos.push(codigo);
+      if (navigator.vibrate) navigator.vibrate(100);
+      beep();
+      document.getElementById('status').style.color = '#4ade80';
+      document.getElementById('status').innerText = `Adicionado (${listaCodigos.length}): ${codigo}`;
+      atualizarListaVisual();
+    }
+
+    function concluirMassa() {
+      if (!listaCodigos.length) {
+        alert('Nenhum pacote BR foi escaneado ainda.');
+        return;
+      }
+      finalizando = true;
+      redirecionarDeVolta(listaCodigos.join(','), 'massa');
+    }
+
+    function redirecionarDeVolta(payload, tipoModo) {
+      if (html5QrCode) html5QrCode.stop().catch(() => {});
       if (urlVoltar) {
-        const separador = urlVoltar.includes('?') ? '&' : '?';
-        window.location.href = `${urlVoltar}${separador}qr=${encodeURIComponent(codigo)}&campo=${encodeURIComponent(campo)}`;
-      } else {
-        alert('Código lido: ' + codigo + '\n(URL de retorno não informada)');
+        const sep = urlVoltar.includes('?') ? '&' : '?';
+        window.location.href = `${urlVoltar}${sep}qr=${encodeURIComponent(payload)}&campo=${encodeURIComponent(campo)}&modo=${encodeURIComponent(tipoModo)}`;
       }
     }
 
     function voltarSemLer() {
-      if (html5QrCode) {
-        html5QrCode.stop().catch(() => {});
-      }
-      if (urlVoltar) {
-        window.location.href = urlVoltar;
-      } else {
-        history.back();
-      }
+      if (html5QrCode) html5QrCode.stop().catch(() => {});
+      if (urlVoltar) window.location.href = urlVoltar;
+      else history.back();
     }
 
     window.addEventListener('load', () => {
       html5QrCode = new Html5Qrcode("reader");
-      const config = {
-        fps: 15,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0
-      };
-
       html5QrCode.start(
         { facingMode: "environment" },
-        config,
-        (decodedText) => {
-          devolverCodigo(decodedText.trim());
-        },
-        () => {} // ignora frames sem QR
+        { fps: 18, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+        (decodedText) => processarLeitura(decodedText.trim()),
+        () => {}
       ).then(() => {
-        document.getElementById('status').innerText = '🔍 Procurando código...';
+        document.getElementById('status').innerText = 'Câmera ativa — aponte para o QR Code';
       }).catch((err) => {
-        document.getElementById('status').style.color = '#ff5252';
-        document.getElementById('status').innerText = '⚠️ Erro ao acessar câmera: ' + err;
+        document.getElementById('status').style.color = '#f87171';
+        document.getElementById('status').innerText = 'Erro na câmera: ' + err;
       });
     });
   </script>
