@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Leitor QR - Retirada Volumoso</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+      background: #111;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      justify-content: space-between;
+    }
+    .topo {
+      padding: 16px;
+      text-align: center;
+      background: #1c1e21;
+      border-bottom: 1px solid #333;
+    }
+    .topo h2 { font-size: 18px; margin-bottom: 4px; }
+    .topo p { font-size: 13px; color: #aaa; }
+    #reader {
+      width: 100%;
+      max-width: 450px;
+      margin: auto;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .rodape {
+      padding: 16px;
+      background: #1c1e21;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .btn-voltar {
+      width: 100%;
+      padding: 14px;
+      background: #b00020;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    #status {
+      text-align: center;
+      font-size: 13px;
+      color: #4caf50;
+      min-height: 18px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="topo">
+    <h2 id="tituloCampo">📷 Escaneando QR Code</h2>
+    <p>Aponte a câmera traseira para o código</p>
+  </div>
+
+  <div id="reader"></div>
+
+  <div class="rodape">
+    <div id="status">Iniciando câmera...</div>
+    <button class="btn-voltar" onclick="voltarSemLer()">✖ Cancelar e Voltar</button>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const campo = params.get('campo') || 'pacote';
+    const urlVoltar = params.get('voltar') || '';
+
+    document.getElementById('tituloCampo').innerText =
+      campo === 'motorista' ? '🪪 Escanear ID do Motorista' : '📦 Escanear QR do Pacote';
+
+    let html5QrCode;
+    let jaLeu = false;
+
+    function devolverCodigo(codigo) {
+      if (jaLeu) return;
+      jaLeu = true;
+
+      if (navigator.vibrate) navigator.vibrate(150);
+      document.getElementById('status').innerText = '✅ Lido: ' + codigo + ' — voltando...';
+
+      if (html5QrCode) {
+        html5QrCode.stop().catch(() => {});
+      }
+
+      if (urlVoltar) {
+        const separador = urlVoltar.includes('?') ? '&' : '?';
+        window.location.href = `${urlVoltar}${separador}qr=${encodeURIComponent(codigo)}&campo=${encodeURIComponent(campo)}`;
+      } else {
+        alert('Código lido: ' + codigo + '\n(URL de retorno não informada)');
+      }
+    }
+
+    function voltarSemLer() {
+      if (html5QrCode) {
+        html5QrCode.stop().catch(() => {});
+      }
+      if (urlVoltar) {
+        window.location.href = urlVoltar;
+      } else {
+        history.back();
+      }
+    }
+
+    window.addEventListener('load', () => {
+      html5QrCode = new Html5Qrcode("reader");
+      const config = {
+        fps: 15,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0
+      };
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          devolverCodigo(decodedText.trim());
+        },
+        () => {} // ignora frames sem QR
+      ).then(() => {
+        document.getElementById('status').innerText = '🔍 Procurando código...';
+      }).catch((err) => {
+        document.getElementById('status').style.color = '#ff5252';
+        document.getElementById('status').innerText = '⚠️ Erro ao acessar câmera: ' + err;
+      });
+    });
+  </script>
+</body>
+</html>
